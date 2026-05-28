@@ -670,38 +670,17 @@ canvas.addEventListener('wheel', e => {
   }
 }, { passive:false });
 
-// drag pan or drag date range
-let drag=false, dsx, dsy, dpx, dpy, dragType='pan';
+// drag pan
+let drag=false, dsx, dsy, dpx, dpy;
 canvas.addEventListener('pointerdown', e => {
   if (e.button!==0) return;
-  const {gx} = screenToGrid(e.clientX, e.clientY);
-  const c = colAt(gx);
-  // Check if dragging on target range
-  const tiStart = targetNights.length > 0 ? dates.indexOf(targetNights[0]) : -1;
-  const tiEnd = targetNights.length > 0 ? dates.indexOf(targetNights[targetNights.length-1]) : -1;
-  dragType = (c >= tiStart && c <= tiEnd && tiStart >= 0) ? 'date' : 'pan';
   drag=true; dsx=e.clientX; dsy=e.clientY; dpx=panX; dpy=panY;
   canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
   if (drag) {
-    if (dragType === 'date') {
-      const dx = e.clientX - dsx;
-      const dayShift = Math.round(dx / (CW * scaleX));
-      if (dayShift !== 0) {
-        const inDate = new Date(targetIn());
-        const outDate = new Date(targetOut());
-        inDate.setDate(inDate.getDate() + dayShift);
-        outDate.setDate(outDate.getDate() + dayShift);
-        document.getElementById('dp-in').value = inDate.toISOString().slice(0,10);
-        document.getElementById('dp-out').value = outDate.toISOString().slice(0,10);
-        targetNights=[]; loadData(); return;
-      }
-    } else {
-      panX=dpx+(e.clientX-dsx); panY=dpy+(e.clientY-dsy);
-      clamp(); scheduleDraw();
-    }
-    updateHover(e.clientX, e.clientY);
+    panX=dpx+(e.clientX-dsx); panY=dpy+(e.clientY-dsy);
+    clamp(); scheduleDraw();
   } else {
     updateHover(e.clientX, e.clientY);
   }
