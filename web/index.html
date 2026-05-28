@@ -41,8 +41,7 @@ body {
   font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   overflow:hidden; width:100vw; height:100vh;
 }
-#canvas { display:block; cursor:grab; touch-action:none; }
-#canvas.dragging { cursor:grabbing; }
+#canvas { display:block; cursor:default; touch-action:none; }
 
 /* ── top toolbar ── */
 #toolbar {
@@ -671,24 +670,44 @@ canvas.addEventListener('wheel', e => {
   }
 }, { passive:false });
 
-// drag pan
-let drag=false, dsx, dsy, dpx, dpy;
+// drag pan or drag date range
+let drag=false, dsx, dsy, dpx, dpy, dragType='pan';
 canvas.addEventListener('pointerdown', e => {
   if (e.button!==0) return;
+  const {gx} = screenToGrid(e.clientX, e.clientY);
+  const c = colAt(gx);
+  // Check if dragging on target range
+  const tiStart = targetNights.length > 0 ? dates.indexOf(targetNights[0]) : -1;
+  const tiEnd = targetNights.length > 0 ? dates.indexOf(targetNights[targetNights.length-1]) : -1;
+  dragType = (c >= tiStart && c <= tiEnd && tiStart >= 0) ? 'date' : 'pan';
   drag=true; dsx=e.clientX; dsy=e.clientY; dpx=panX; dpy=panY;
   canvas.setPointerCapture(e.pointerId);
-  canvas.classList.add('dragging');
 });
 canvas.addEventListener('pointermove', e => {
   if (drag) {
-    panX=dpx+(e.clientX-dsx); panY=dpy+(e.clientY-dsy);
-    clamp(); scheduleDraw();
+    if (dragType === 'date') {
+      const dx = e.clientX - dsx;
+      const dayShift = Math.round(dx / (CW * scaleX));
+      if (dayShift !== 0) {
+        const inDate = new Date(targetIn());
+        const outDate = new Date(targetOut());
+        inDate.setDate(inDate.getDate() + dayShift);
+        outDate.setDate(outDate.getDate() + dayShift);
+        document.getElementById('dp-in').value = inDate.toISOString().slice(0,10);
+        document.getElementById('dp-out').value = outDate.toISOString().slice(0,10);
+        targetNights=[]; loadData(); return;
+      }
+    } else {
+      panX=dpx+(e.clientX-dsx); panY=dpy+(e.clientY-dsy);
+      clamp(); scheduleDraw();
+    }
+    updateHover(e.clientX, e.clientY);
   } else {
     updateHover(e.clientX, e.clientY);
   }
 });
 canvas.addEventListener('pointerup', () => {
-  drag=false; canvas.classList.remove('dragging');
+  drag=false;
 });
 
 // pinch zoom (horizontal axis only)
