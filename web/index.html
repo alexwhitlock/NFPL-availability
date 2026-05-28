@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFPL Availability</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ── theme variables ── */
+:root {
+  --bg:         #0f172a;
+  --panel:      #1e293b;
+  --panel2:     #162032;
+  --border:     #334155;
+  --text:       #e2e8f0;
+  --text2:      #cbd5e1;
+  --muted:      #94a3b8;
+  --muted2:     #64748b;
+  --input-bg:   #0f172a;
+  --cs:         dark;
+  --shadow:     rgba(0,0,0,.5);
+}
+body.light {
+  --bg:         #f8fafc;
+  --panel:      #ffffff;
+  --panel2:     #f1f5f9;
+  --border:     #9db3cc;
+  --text:       #1e293b;
+  --text2:      #334155;
+  --muted:      #64748b;
+  --muted2:     #94a3b8;
+  --input-bg:   #f8fafc;
+  --cs:         light;
+  --shadow:     rgba(0,0,0,.15);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  overflow:hidden; width:100vw; height:100vh;
+}
+#canvas { display:block; cursor:grab; touch-action:none; }
+#canvas.dragging { cursor:grabbing; }
+
+/* ── top toolbar ── */
+#toolbar {
+  position:fixed; top:0; left:0; right:0; height:38px; z-index:50;
+  background:var(--panel); border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:8px; padding:0 10px;
+}
+#toolbar-title { font-size:12px; font-weight:700; color:var(--muted); white-space:nowrap; margin-right:4px; }
+.tb-label { font-size:11px; color:var(--muted); white-space:nowrap; }
+.tb-date {
+  background:var(--input-bg); border:1px solid var(--border); border-radius:4px;
+  color:var(--text); font-size:11px; padding:2px 6px; height:26px;
+  outline:none; color-scheme:var(--cs);
+}
+.tb-date:focus { border-color:var(--muted); }
+.tb-sep { width:1px; height:20px; background:var(--border); margin:0 2px; }
+.tb-btn {
+  height:26px; padding:0 10px; background:var(--input-bg); border:1px solid var(--border);
+  border-radius:4px; color:var(--text); font-size:11px; cursor:pointer;
+  white-space:nowrap; display:flex; align-items:center; gap:5px;
+}
+.tb-btn:hover { background:var(--panel2); }
+.tb-btn.active { background:#1d4ed8; border-color:#3b82f6; color:#fff; }
+.tb-btn.active:hover { background:#1e40af; }
+
+.view-toggle {
+  display:flex; border:1px solid var(--border); border-radius:5px;
+  overflow:hidden; flex-shrink:0;
+}
+.vt-btn {
+  height:26px; padding:0 11px; font-size:11px; cursor:pointer;
+  background:transparent; border:none; color:var(--muted);
+  white-space:nowrap;
+}
+.vt-btn:hover { background:var(--panel2); color:var(--text); }
+.vt-btn.active { background:#1d4ed8; color:#fff; }
+
+#tb-spacer { flex:1; }
+
+/* ── zoom controls ── */
+#controls {
+  position:fixed; top:86px; right:12px; z-index:50;
+  display:flex; flex-direction:column; gap:4px;
+}
+.ctrl-btn {
+  width:32px; height:32px; background:var(--panel); border:1px solid var(--border);
+  border-radius:6px; color:var(--text); font-size:17px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; user-select:none;
+}
+.ctrl-btn:hover { background:var(--panel2); }
+
+/* ── status bar ── */
+#statusbar {
+  position:fixed; bottom:0; left:0; right:0; height:30px;
+  background:var(--panel); border-top:1px solid var(--border);
+  display:flex; align-items:center; padding:0 14px; gap:20px;
+  font-size:11.5px; color:var(--muted); z-index:50;
+}
+.legend { display:flex; align-items:center; gap:5px; }
+.dot { width:11px; height:11px; border-radius:2px; flex-shrink:0; }
+#hover-cell { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+#zoom-pct   { color:var(--muted2); font-size:11px; min-width:38px; text-align:right; }
+#updated    { color:var(--muted); font-size:10.5px; white-space:nowrap; }
+
+/* ── lake dropdown ── */
+#lake-menu {
+  position:fixed; top:44px; left:0; z-index:60;
+  background:var(--panel); border:1px solid var(--border); border-radius:0 0 7px 7px;
+  padding:6px 0; min-width:180px; display:none;
+  box-shadow:0 6px 20px var(--shadow);
+}
+#lake-menu.open { display:block; }
+.lake-opt {
+  display:flex; align-items:center; gap:8px;
+  padding:5px 14px; cursor:pointer; font-size:12px; color:var(--text2); user-select:none;
+}
+.lake-opt:hover { background:var(--panel2); }
+.lake-opt input { accent-color:#3b82f6; cursor:pointer; }
+#lake-menu-divider { border:none; border-top:1px solid var(--border); margin:4px 0; }
+
+/* ── tooltip ── */
+#tooltip {
+  position:fixed; background:var(--panel); border:1px solid var(--border);
+  border-radius:7px; padding:9px 13px; font-size:12px; line-height:1.5;
+  pointer-events:none; z-index:200; display:none;
+  box-shadow:0 6px 20px var(--shadow); max-width:300px; color:var(--text);
+}
+#loading {
+  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:var(--muted); font-size:15px; letter-spacing:.03em;
+}
+
+/* ── basemap radio panel (leaflet bottom-left) ── */
+#basemap-panel {
+  background:var(--panel); border:1px solid var(--border); border-radius:5px;
+  padding:6px 10px; font-size:11px; display:flex; gap:10px;
+  box-shadow:0 2px 8px var(--shadow);
+}
+#basemap-panel label { display:flex; align-items:center; gap:4px; cursor:pointer; color:var(--text); }
+#basemap-panel input { accent-color:#3b82f6; cursor:pointer; }
+
+/* ── map view ── */
+#map-container {
+  display:none; position:fixed;
+  top:38px; left:0; right:0; bottom:30px; z-index:5;
+}
+#map { width:100%; height:100%; }
+.site-marker {
+  display:flex; align-items:center; justify-content:center;
+  border-radius:50%; font-weight:700; color:#fff;
+  font-family:-apple-system,sans-serif;
+  border:2px solid rgba(0,0,0,0.35);
+  box-shadow:0 2px 6px rgba(0,0,0,0.4);
+  cursor:pointer; line-height:1;
+  transition:transform .15s;
+}
+.site-marker:hover { transform:scale(1.2); }
+.site-marker.avail    { background:#22c55e; }
+.site-marker.unavail  { background:#94a3b8; }
+.leaflet-popup-content { font-size:13px; line-height:1.5; min-width:220px; max-width:300px; }
+.popup-img { width:100%; border-radius:5px; margin:6px 0 4px; display:block; }
+.popup-name { font-weight:700; font-size:14px; margin-bottom:2px; }
+.popup-status { font-size:12px; margin-bottom:6px; }
+.popup-desc { font-size:11.5px; color:#555; margin-bottom:6px; white-space:pre-line; }
+.popup-amenities { font-size:11px; color:#666; }
+.avail-yes { color:#16a34a; font-weight:600; }
+.avail-no  { color:#6b7280; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span id="toolbar-title">NFPL Availability</span>
+  <div class="tb-sep"></div>
+  <span class="tb-label">In</span>
+  <input class="tb-date" type="date" id="dp-in" value="2026-07-17">
+  <span class="tb-label">Out</span>
+  <input class="tb-date" type="date" id="dp-out" value="2026-07-19">
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-lakes">Lakes ▾</button>
+  <button class="tb-btn" id="btn-filter" title="Show only sites available for entire highlighted range">⚑ Available only</button>
+  <div class="tb-sep"></div>
+  <div class="view-toggle">
+    <button class="vt-btn active" id="btn-view-grid">⊞ Grid</button>
+    <button class="vt-btn" id="btn-view-map">⊙ Map</button>
+  </div>
+  <span id="tb-spacer"></span>
+  <span id="updated" style="font-size:10.5px"></span>
+  <button class="tb-btn" id="btn-theme" title="Toggle light/dark mode">☀︎</button>
+  <button class="tb-btn" id="btn-refresh" title="Refresh data">↻ Refresh</button>
+</div>
+
+<canvas id="canvas"></canvas>
+<div id="map-container"><div id="map"></div></div>
+
+<div id="statusbar">
+  <span id="hover-cell">Scroll to pan &nbsp;·&nbsp; Ctrl+scroll to zoom time axis &nbsp;·&nbsp; drag to pan</span>
+  <div class="legend"><div class="dot" style="background:#22c55e"></div>Available</div>
+  <div class="legend"><div class="dot" style="background:#fbbf24"></div>Highlighted range</div>
+  <div class="legend"><div class="dot" style="background:#818cf8"></div>Weekend</div>
+  <span id="zoom-pct">100%</span>
+</div>
+
+<div id="lake-menu">
+  <div class="lake-opt" id="lake-all-row">
+    <input type="checkbox" id="lake-all" checked> <label for="lake-all">All lakes</label>
+  </div>
+  <hr id="lake-menu-divider">
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn" id="btn-zi" title="Zoom in (Ctrl+scroll)">+</button>
+  <button class="ctrl-btn" id="btn-zo" title="Zoom out (Ctrl+scroll)">−</button>
+  <button class="ctrl-btn" id="btn-fit" title="Fit all dates" style="font-size:12px">⊡</button>
+</div>
+
+<div id="tooltip"></div>
+<div id="loading">Loading availability data…</div>
+
+<script>
+// ── constants ────────────────────────────────────────────────────────────────
+// TARGET_IN / TARGET_OUT are read live from the date inputs
+function targetIn()  { return document.getElementById('dp-in').value; }
+function targetOut() { return document.getElementById('dp-out').value; }
+const BOOK_BASE  = 'https://www.onressystems.com/reservations/?property=north-frontenac-park-lands&prodlist=';
+
+const LAKE_ORDER = ['Big Gull','Crotch','Fortune','Govan','Granite',
+                    'Hungry','Kashwakamak','Long Schooner','Mair','Redhorse','Round Schooner'];
+
+// grid layout (grid-space units — multiplied by scale for screen pixels)
+const CW   = 13;   // cell width
+const CH   = 13;   // cell height
+const LH   = 18;   // lake-header row height
+const NW   = 192;  // name column width  (screen px, not scaled)
+const DH   = 36;   // date header height (screen px, not scaled)
+const TB   = 38;   // toolbar height
+
+// colours
+const THEMES = {
+  dark: {
+    bg:         '#0f172a',
+    panelBg:    '#1e293b',
+    border:     '#1e3a5f',
+    lakeBg:     '#162032',
+    lakeFg:     '#94a3b8',
+    nameFg:     '#cbd5e1',
+    nameVehFg:  '#fbbf24',
+    nameClsFg:  '#f87171',
+    dateFg:     '#94a3b8',
+    monthFg:    '#e2e8f0',
+    avail:      '#22c55e',
+    wkend:      'rgba(99,102,241,0.28)',
+    targetFill: 'rgba(251,191,36,0.13)',
+    targetLine: '#fbbf24',
+    todayLine:  '#3b82f6',
+  },
+  light: {
+    bg:         '#f8fafc',
+    panelBg:    '#ffffff',
+    border:     '#9db3cc',
+    lakeBg:     '#f1f5f9',
+    lakeFg:     '#475569',
+    nameFg:     '#1e293b',
+    nameVehFg:  '#b45309',
+    nameClsFg:  '#dc2626',
+    dateFg:     '#475569',
+    monthFg:    '#1e293b',
+    avail:      '#16a34a',
+    wkend:      'rgba(109,40,217,0.11)',
+    targetFill: 'rgba(217,119,6,0.10)',
+    targetLine: '#d97706',
+    todayLine:  '#2563eb',
+  },
+};
+let isDark = true;
+let CLR = THEMES.dark;
+
+// ── canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const dpr    = window.devicePixelRatio || 1;
+
+function vw() { return window.innerWidth; }
+function vh() { return window.innerHeight - 30 - TB; }  // minus statusbar and toolbar
+
+function resizeCanvas() {
+  canvas.width         = vw() * dpr;
+  canvas.height        = vh() * dpr;
+  canvas.style.width   = vw() + 'px';
+  canvas.style.height  = vh() + 'px';
+  canvas.style.position = 'fixed';
+  canvas.style.top      = TB + 'px';
+  canvas.style.left     = '0';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+// ── state ────────────────────────────────────────────────────────────────────
+let scaleX = 1, panX = 0, panY = 0;  // only X (time axis) is zoomable
+let dates = [], allRows = [], rows = [];
+let availSet = new Set();   // 'YYYY-MM-DD:prodId'
+let rowYs = [];             // pre-computed y-offset (grid-space) per row
+let gridH = 0, gridW = 0;  // total grid size in grid-space
+let targetNights = [];      // dates between check-in and check-out
+let filterActive = false;
+let hiddenLakes = new Set(); // lake names currently unchecked
+
+// ── data ─────────────────────────────────────────────────────────────────────
+function lakeOf(name) {
+  for (const l of LAKE_ORDER) if (name.startsWith(l)) return l;
+  return name.split(' Site')[0];
+}
+
+function buildRows(sites) {
+  const byLake = {};
+  for (const s of sites) {
+    const l = lakeOf(s.name);
+    (byLake[l] = byLake[l] || []).push(s);
+  }
+  const result = [];
+  for (const l of LAKE_ORDER) {
+    if (!byLake[l]) continue;
+    result.push({ type:'lake', name:l });
+    for (const s of byLake[l])
+      result.push({ type:'site', id:s.id, name:s.name,
+        isVeh: s.name.includes('VEHICLE'),
+        isCls: s.name.includes('CLOSED'),
+        label: s.label || '?',
+        lat: s.lat, lng: s.lng });
+  }
+  return result;
+}
+
+function updateTargetNights() {
+  const tin = targetIn(), tout = targetOut();
+  targetNights = [];
+  if (tin && tout && tin < tout) {
+    let d = new Date(tin + 'T00:00:00');
+    const end = new Date(tout + 'T00:00:00');
+    while (d < end) { targetNights.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  }
+}
+
+function computeVisibleRows() {
+  const availIds = (filterActive && targetNights.length)
+    ? new Set(allRows
+        .filter(r => r.type === 'site')
+        .filter(r => targetNights.every(n => availSet.has(n + ':' + r.id)))
+        .map(r => r.id))
+    : null;
+
+  const result = [];
+  let i = 0;
+  while (i < allRows.length) {
+    const r = allRows[i];
+    if (r.type === 'lake') {
+      let j = i + 1;
+      const lakeSites = [];
+      while (j < allRows.length && allRows[j].type === 'site') {
+        const site = allRows[j];
+        const passAvail = !availIds || availIds.has(site.id);
+        const passLake  = !hiddenLakes.has(r.name);
+        if (passAvail && passLake) lakeSites.push(site);
+        j++;
+      }
+      if (lakeSites.length && !hiddenLakes.has(r.name)) {
+        result.push(r); result.push(...lakeSites);
+      }
+      i = j;
+    } else { i++; }
+  }
+  rows = result;
+  precompute();
+  scheduleDraw();
+}
+
+function precompute() {
+  let y = 0;
+  rowYs = [];
+  for (const r of rows) { rowYs.push(y); y += r.type==='lake' ? LH : CH; }
+  gridH = y;
+  gridW = dates.length * CW;
+}
+
+// ── coordinate helpers ───────────────────────────────────────────────────────
+function screenToGrid(sx, sy) {
+  return { gx:(sx - NW - panX)/scaleX, gy:(sy - TB) - DH - panY };
+}
+function colAt(gx)  { return Math.floor(gx / CW); }
+function rowAt(gy) {
+  let lo=0, hi=rowYs.length-1;
+  while (lo<hi) { const m=(lo+hi+1)>>1; rowYs[m]<=gy ? lo=m : hi=m-1; }
+  return lo;
+}
+
+// ── draw ─────────────────────────────────────────────────────────────────────
+let raf = 0;
+function scheduleDraw() { if (!raf) raf = requestAnimationFrame(() => { raf=0; draw(); }); }
+
+function draw() {
+  if (!dates.length) return;
+  const W = vw(), H = vh();
+
+  ctx.fillStyle = CLR.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // visible range in grid-space
+  const gx0 = (0  - NW - panX) / scaleX,  gx1 = (W - NW - panX) / scaleX;
+  const py0 = -panY,  py1 = H - DH - panY;   // visible Y range in row-space (pixels)
+  const c0 = Math.max(0, Math.floor(gx0/CW));
+  const c1 = Math.min(dates.length, Math.ceil(gx1/CW));
+  let r0 = Math.max(0, rowAt(py0) - 1);
+  let r1 = r0;
+  while (r1 < rows.length && rowYs[r1] < py1) r1++;
+  r1 = Math.min(rows.length, r1 + 1);
+
+  const today = new Date().toISOString().slice(0,10);
+  const targetIdxs = targetNights.map(n => dates.indexOf(n)).filter(i => i >= 0);
+  const tdy = dates.indexOf(today);
+
+  // ── grid cells ────────────────────────────────────────────────────────────
+  ctx.save();
+  ctx.beginPath(); ctx.rect(NW, DH, W-NW, H-DH); ctx.clip();
+
+  // 1. weekend column strips (behind everything)
+  for (let c=c0; c<c1; c++) {
+    const dow = new Date(dates[c]+'T00:00:00').getDay();
+    if (dow===0||dow===6) {
+      ctx.fillStyle = CLR.wkend;
+      ctx.fillRect(NW + panX + c*CW*scaleX, DH, CW*scaleX, H-DH);
+    }
+  }
+
+  // 2. target column strips
+  for (const ti of targetIdxs) {
+    ctx.fillStyle = CLR.targetFill;
+    ctx.fillRect(NW + panX + ti*CW*scaleX, DH, CW*scaleX, H-DH);
+  }
+
+  // 3. available cells only — lake rows and not-available are transparent
+  for (let r=r0; r<r1; r++) {
+    const row = rows[r];
+    if (row.type !== 'site') continue;
+    const sy = DH + panY + rowYs[r];
+    ctx.fillStyle = CLR.avail;
+    for (let c=c0; c<c1; c++) {
+      if (availSet.has(dates[c]+':'+row.id))
+        ctx.fillRect(NW + panX + c*CW*scaleX, sy, CW*scaleX, CH);
+    }
+  }
+
+  // 4. grid lines (vertical + horizontal, clipped to grid area)
+  const cw = CW * scaleX;
+  if (cw >= 3) {
+    ctx.strokeStyle = CLR.border; ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let c=c0; c<=c1; c++) {
+      const x = NW + panX + c*CW*scaleX;
+      ctx.moveTo(x, DH); ctx.lineTo(x, H);
+    }
+    for (let r=r0; r<r1; r++) {
+      if (rows[r].type !== 'site') continue;
+      const y = DH + panY + rowYs[r];
+      ctx.moveTo(NW, y); ctx.lineTo(W, y);
+      if (r+1 >= rows.length || rows[r+1].type === 'lake') {
+        ctx.moveTo(NW, y+CH); ctx.lineTo(W, y+CH);
+      }
+    }
+    ctx.stroke();
+  }
+
+  // target border lines (left edge of first night, right edge of last night)
+  if (targetIdxs.length) {
+    const x0 = NW + panX + targetIdxs[0]*CW*scaleX;
+    const x1 = NW + panX + (targetIdxs[targetIdxs.length-1]+1)*CW*scaleX;
+    ctx.strokeStyle = CLR.targetLine; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x0,DH); ctx.lineTo(x0,H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1,DH); ctx.lineTo(x1,H); ctx.stroke();
+  }
+
+  // today line
+  if (tdy>=0) {
+    const tx = NW + panX + (tdy+0.5)*CW*scaleX;
+    ctx.strokeStyle = CLR.todayLine; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(tx,DH); ctx.lineTo(tx,H); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+
+  // ── date header ───────────────────────────────────────────────────────────
+  ctx.save();
+  ctx.beginPath(); ctx.rect(NW, 0, W-NW, DH); ctx.clip();
+  ctx.fillStyle = CLR.panelBg; ctx.fillRect(NW, 0, W-NW, DH);
+
+  // target highlight in header
+  for (const ti of targetIdxs) {
+    ctx.fillStyle = 'rgba(251,191,36,0.2)';
+    ctx.fillRect(NW + panX + ti*CW*scaleX, 0, CW*scaleX, DH);
+  }
+
+  let lastMon = null;
+  for (let c=c0; c<c1; c++) {
+    const ds  = dates[c];
+    const mon = ds.slice(0,7);
+    const day = ds.slice(8);
+    const sx  = NW + panX + c*CW*scaleX;
+    const cw  = CW*scaleX;
+
+    if (mon !== lastMon) {
+      // month divider
+      ctx.strokeStyle = CLR.border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(sx,0); ctx.lineTo(sx,DH); ctx.stroke();
+      // month label
+      if (cw > 6) {
+        const d = new Date(ds+'T00:00:00');
+        const label = d.toLocaleString('en-CA',{month:'short'}) + ' ' + d.getFullYear();
+        ctx.fillStyle = CLR.monthFg;
+        ctx.font = `600 ${Math.min(12, Math.max(8,cw*0.8))}px -apple-system,sans-serif`;
+        ctx.textBaseline = 'top';
+        ctx.fillText(label, sx+4, 5);
+      }
+      lastMon = mon;
+    }
+
+    // day label
+    const dow2 = new Date(ds+'T00:00:00').getDay();
+    const isWkend = dow2===0||dow2===6;
+    const isMon   = dow2===1;
+    if (cw >= 9) {
+      // normal: show every day number
+      ctx.fillStyle = ds===today ? CLR.todayLine : isWkend ? '#818cf8' : CLR.dateFg;
+      const fs = Math.min(11, Math.max(7, cw*0.75));
+      ctx.font = `${fs}px -apple-system,sans-serif`;
+      ctx.textBaseline = 'bottom';
+      const tw = ctx.measureText(day).width;
+      ctx.fillText(day, sx + (cw-tw)/2, DH-3);
+    } else if (isMon && cw >= 1.5) {
+      // zoomed out: small horizontal day number, left-anchored at Monday boundary
+      ctx.strokeStyle = CLR.border; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(sx, DH-6); ctx.lineTo(sx, DH); ctx.stroke();
+      ctx.fillStyle = ds===today ? CLR.todayLine : CLR.dateFg;
+      ctx.font = `7px -apple-system,sans-serif`;
+      ctx.textBaseline = 'bottom'; ctx.textAlign = 'left';
+      ctx.fillText(day, sx+1, DH-1);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  // target label
+  if (targetIdxs.length) {
+    const sx = NW + panX + targetIdxs[0]*CW*scaleX;
+    const label = targetIn() + ' – ' + targetOut();
+    ctx.fillStyle = CLR.targetLine;
+    ctx.font = 'bold 10px -apple-system,sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, sx+2, DH/2);
+  }
+
+  ctx.restore();
+
+  // ── site-name column ──────────────────────────────────────────────────────
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, DH, NW, H-DH); ctx.clip();
+  ctx.fillStyle = CLR.panelBg; ctx.fillRect(0, DH, NW, H-DH);
+
+  for (let r=r0; r<r1; r++) {
+    const row = rows[r];
+    const sy  = DH + panY + rowYs[r];
+    const rh  = row.type==='lake' ? LH : CH;
+    if (sy+rh < DH || sy > H) continue;
+
+    if (row.type==='lake') {
+      ctx.fillStyle = CLR.lakeBg; ctx.fillRect(0, sy, NW, rh);
+      if (rh >= 9) {
+        const fs = Math.min(11, Math.max(8, rh*0.6));
+        ctx.fillStyle = CLR.lakeFg;
+        ctx.font = `700 ${fs}px -apple-system,sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(row.name.toUpperCase(), 8, sy+rh/2);
+      }
+    } else {
+      if (rh >= 7) {
+        const fs = Math.min(11, Math.max(7, rh*0.65));
+        ctx.fillStyle = row.isCls ? CLR.nameClsFg : CLR.nameFg;
+        ctx.font = `${fs}px -apple-system,sans-serif`;
+        ctx.textBaseline = 'middle';
+        // strip verbose suffixes, add emoji indicators
+        let label = row.name
+          .replace(' - VEHICLE ACCESS SITE', ' 🚗')
+          .replace(' - CLOSED DURING LATE SUMMER', ' [closed]');
+        // clip text to column
+        ctx.save();
+        ctx.beginPath(); ctx.rect(0, DH, NW-4, H-DH); ctx.clip();
+        ctx.fillText(label, 8, sy+rh/2);
+        ctx.restore();
+      }
+    }
+  }
+
+  // horizontal grid lines extending through name column
+  if (cw >= 3) {
+    ctx.strokeStyle = CLR.border; ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let r=r0; r<r1; r++) {
+      if (rows[r].type !== 'site') continue;
+      const y = DH + panY + rowYs[r];
+      ctx.moveTo(0, y); ctx.lineTo(NW, y);
+      if (r+1 >= rows.length || rows[r+1].type === 'lake') {
+        ctx.moveTo(0, y+CH); ctx.lineTo(NW, y+CH);
+      }
+    }
+    ctx.stroke();
+  }
+
+  // column right border
+  ctx.strokeStyle = CLR.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(NW-0.5,DH); ctx.lineTo(NW-0.5,H); ctx.stroke();
+  ctx.restore();
+
+  // ── corner ────────────────────────────────────────────────────────────────
+  ctx.fillStyle = CLR.panelBg; ctx.fillRect(0, 0, NW, DH);
+  ctx.fillStyle = CLR.panelBg; ctx.fillRect(0, 0, NW, DH);
+  // corner borders
+  ctx.strokeStyle = CLR.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(NW-0.5,0); ctx.lineTo(NW-0.5,DH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,DH-0.5); ctx.lineTo(W,DH-0.5); ctx.stroke();
+
+  document.getElementById('zoom-pct').textContent = Math.round(scaleX*100)+'%';
+}
+
+// ── pan/zoom ──────────────────────────────────────────────────────────────────
+function clamp() {
+  panX = Math.max(Math.min(0, vw()-NW-gridW*scaleX), Math.min(0, panX));
+  panY = Math.max(Math.min(0, vh()-DH-gridH),        Math.min(0, panY));
+}
+
+function zoomX(factor, cx) {
+  const gx = (cx - NW - panX) / scaleX;
+  scaleX = Math.max(0.25, Math.min(10, scaleX * factor));
+  panX = cx - NW - gx * scaleX;
+  clamp(); scheduleDraw();
+}
+
+function fitAll() {
+  scaleX = Math.max(0.25, Math.min(1, (vw()-NW)/gridW));
+  panX=0; panY=0; clamp(); scheduleDraw();
+}
+
+function jumpToTarget() {
+  const ti = dates.indexOf(targetIn());
+  if (ti<0) return;
+  panX = (vw()-NW)/2 - ti*CW*scaleX - CW*scaleX/2;
+  panY = 0; clamp(); scheduleDraw();
+}
+
+// scroll = pan, Ctrl+scroll = zoom time axis (X only)
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    zoomX(e.deltaY < 0 ? 1.12 : 1/1.12, e.clientX);
+  } else {
+    panX -= e.deltaX;
+    panY -= e.deltaY;
+    clamp(); scheduleDraw();
+  }
+}, { passive:false });
+
+// drag pan
+let drag=false, dsx, dsy, dpx, dpy;
+canvas.addEventListener('pointerdown', e => {
+  if (e.button!==0) return;
+  drag=true; dsx=e.clientX; dsy=e.clientY; dpx=panX; dpy=panY;
+  canvas.setPointerCapture(e.pointerId);
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', e => {
+  if (drag) {
+    panX=dpx+(e.clientX-dsx); panY=dpy+(e.clientY-dsy);
+    clamp(); scheduleDraw();
+  } else {
+    updateHover(e.clientX, e.clientY);
+  }
+});
+canvas.addEventListener('pointerup', () => {
+  drag=false; canvas.classList.remove('dragging');
+});
+
+// pinch zoom (horizontal axis only)
+let pinchDist=0;
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches.length===2) { e.preventDefault(); pinchDist=Math.abs(e.touches[0].clientX-e.touches[1].clientX)||1; }
+},{passive:false});
+canvas.addEventListener('touchmove', e=>{
+  if(e.touches.length===2) {
+    e.preventDefault();
+    const d=Math.abs(e.touches[0].clientX-e.touches[1].clientX)||1;
+    if(pinchDist) { const cx=(e.touches[0].clientX+e.touches[1].clientX)/2; zoomX(d/pinchDist,cx); }
+    pinchDist=d;
+  }
+},{passive:false});
+
+// hover tooltip
+function updateHover(mx,my) {
+  if (mx<NW||(my-TB)<DH) { hideTooltip(); return; }
+  const {gx,gy} = screenToGrid(mx,my);
+  const ci=colAt(gx), ri=rowAt(gy);
+  if (ci<0||ci>=dates.length||!rows[ri]||rows[ri].type!=='site') { hideTooltip(); return; }
+  const row=rows[ri], ds=dates[ci];
+  const ok=availSet.has(ds+':'+row.id);
+  const d=new Date(ds+'T00:00:00');
+  const dayStr=d.toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'});
+  document.getElementById('hover-cell').textContent=
+    row.name + ' · ' + dayStr + ' · ' + (ok?'Available':'Not available');
+  const tip=document.getElementById('tooltip');
+  tip.innerHTML=`<strong>${row.name}</strong><br>${dayStr}<br>`+
+    (ok ? `<span style="color:#22c55e">&#x2713; Available</span>`
+        : `<span style="color:#475569">&#x2715; Not available</span>`);
+  tip.style.display='block';
+  tip.style.left=Math.min(mx+14, vw()-310)+'px';
+  tip.style.top =Math.min(my- 8, vh()- 80)+'px';
+}
+function hideTooltip() { document.getElementById('tooltip').style.display='none'; }
+canvas.addEventListener('mouseleave', hideTooltip);
+
+function handleClick(mx,my) {
+  if (mx<NW||my<DH) return;
+  const {gx,gy}=screenToGrid(mx,my);
+  const ci=colAt(gx), ri=rowAt(gy);
+  if (ci<0||ci>=dates.length||!rows[ri]||rows[ri].type!=='site') return;
+  if (availSet.has(dates[ci]+':'+rows[ri].id))
+    window.open(BOOK_BASE+rows[ri].id,'_blank');
+}
+
+// button controls
+document.getElementById('btn-zi').addEventListener('click', ()=>zoomX(1.3, vw()/2));
+document.getElementById('btn-zo').addEventListener('click', ()=>zoomX(1/1.3, vw()/2));
+document.getElementById('btn-fit').addEventListener('click', fitAll);
+
+document.getElementById('btn-theme').addEventListener('click', () => {
+  isDark = !isDark;
+  CLR = isDark ? THEMES.dark : THEMES.light;
+  document.body.classList.toggle('light', !isDark);
+  document.getElementById('btn-theme').textContent = isDark ? '☀︎' : '☽';
+  scheduleDraw();
+});
+window.addEventListener('resize', resizeCanvas);
+
+// availability filter toggle
+document.getElementById('btn-filter').addEventListener('click', () => {
+  filterActive = !filterActive;
+  document.getElementById('btn-filter').classList.toggle('active', filterActive);
+  computeVisibleRows();
+});
+
+// lake dropdown — anchor it under the Lakes button
+const lakeMenu = document.getElementById('lake-menu');
+document.getElementById('btn-lakes').addEventListener('click', e => {
+  e.stopPropagation();
+  const rect = e.currentTarget.getBoundingClientRect();
+  lakeMenu.style.left = rect.left + 'px';
+  lakeMenu.classList.toggle('open');
+});
+document.addEventListener('click', () => lakeMenu.classList.remove('open'));
+lakeMenu.addEventListener('click', e => e.stopPropagation());
+
+document.getElementById('lake-all').addEventListener('change', e => {
+  const checked = e.target.checked;
+  lakeMenu.querySelectorAll('.lake-cb').forEach(cb => {
+    cb.checked = checked;
+    checked ? hiddenLakes.delete(cb.dataset.lake) : hiddenLakes.add(cb.dataset.lake);
+  });
+  computeVisibleRows();
+});
+
+function buildLakeMenu() {
+  const divider = document.getElementById('lake-menu-divider');
+  for (const lake of LAKE_ORDER) {
+    const opt = document.createElement('div');
+    opt.className = 'lake-opt';
+    const id = 'lake-cb-' + lake.replace(/\s+/g, '-');
+    opt.innerHTML = `<input type="checkbox" class="lake-cb" id="${id}" data-lake="${lake}" checked>
+                     <label for="${id}">${lake}</label>`;
+    lakeMenu.appendChild(opt);
+    opt.querySelector('input').addEventListener('change', () => {
+      const cb = opt.querySelector('input');
+      cb.checked ? hiddenLakes.delete(lake) : hiddenLakes.add(lake);
+      const all = lakeMenu.querySelectorAll('.lake-cb');
+      document.getElementById('lake-all').checked = [...all].every(c => c.checked);
+      computeVisibleRows();
+    });
+  }
+}
+
+// date picker wiring
+document.getElementById('dp-in').addEventListener('change', () => {
+  const dpIn = document.getElementById('dp-in');
+  const dpOut = document.getElementById('dp-out');
+  if (dpOut.value <= dpIn.value) {
+    const d = new Date(dpIn.value + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    dpOut.value = d.toISOString().slice(0,10);
+  }
+  updateTargetNights(); jumpToTarget(); computeVisibleRows();
+});
+document.getElementById('dp-out').addEventListener('change', () => {
+  updateTargetNights(); computeVisibleRows();
+});
+
+// ── load data ────────────────────────────────────────────────────────────────
+let dataLoaded = false;
+
+function loadData() {
+  const refreshBtn = document.getElementById('btn-refresh');
+  refreshBtn.textContent = '…'; refreshBtn.disabled = true;
+  document.getElementById('updated').textContent = 'updating…';
+
+  fetch('/api/availability')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(data => {
+      dates = data.dates;
+      availSet.clear();
+      for (const [ds, ids] of Object.entries(data.avail))
+        for (const id of ids) availSet.add(ds + ':' + id);
+
+      allRows = buildRows(data.sites);
+      updateTargetNights();
+
+      if (!dataLoaded) {
+        buildLakeMenu();
+        dataLoaded = true;
+      }
+
+      computeVisibleRows();  // sets rows, precomputes, schedules draw
+      fitAll(); jumpToTarget();
+      document.getElementById('loading').style.display = 'none';
+      resizeCanvas();
+
+      const gen = data.generated ? ' Updated: ' + data.generated.replace('T', ' ') : '';
+      document.getElementById('updated').textContent = gen;
+    })
+    .catch(err => {
+      document.getElementById('updated').textContent = ' · error: ' + err.message;
+      if (!dataLoaded)
+        document.getElementById('loading').textContent = 'Failed to load: ' + err.message;
+    })
+    .finally(() => { refreshBtn.textContent = '↻'; refreshBtn.disabled = false; });
+}
+
+document.getElementById('btn-refresh').addEventListener('click', loadData);
+
+// ── map view ─────────────────────────────────────────────────────────────────
+let leafletMap  = null;
+let osmLayer    = null;
+let satLayer    = null;
+let satActive   = false;
+let siteMarkers = {};
+let siteDetails = {};
+let isMapView   = false;
+const MAP_DEFAULT = { lat: 44.92, lng: -77.0, zoom: 10 };
+
+fetch('sites.json').then(r => r.json()).then(d => { siteDetails = d; });
+
+function makeIcon(label, available) {
+  const s = String(label);
+  const sz = s.length <= 2 ? 26 : s.length === 3 ? 30 : 34;
+  const fs = s.length <= 2 ? 10 : s.length === 3 ? 9 : 8;
+  return L.divIcon({
+    className: '',
+    html: `<div class="site-marker ${available?'avail':'unavail'}" style="width:${sz}px;height:${sz}px;font-size:${fs}px">${s}</div>`,
+    iconSize: [sz,sz], iconAnchor: [sz/2,sz/2], popupAnchor: [0,-(sz/2+4)],
+  });
+}
+
+function siteIsAvailable(id) {
+  return targetNights.length > 0 && targetNights.every(n => availSet.has(n+':'+id));
+}
+
+function buildPopupHtml(site) {
+  const avail = siteIsAvailable(site.id);
+  const d     = siteDetails[String(site.id)] || {};
+  const desc  = (d.desc||'').replace(/GPS Coordinates:[\s\S]*$/m,'').trim();
+  const amen  = (d.amenities||[]).join(' · ');
+  return `<div class="popup-name">${site.name}</div>
+    <div class="popup-status ${avail?'avail-yes':'avail-no'}">${avail?'✓ Available':'✗ Not available'} ${targetIn()} – ${targetOut()}</div>
+    ${(d.imgs||[])[0]?`<img class="popup-img" src="${d.imgs[0]}" loading="lazy" onerror="this.style.display='none'">` : ''}
+    <div class="popup-desc">${desc}</div>
+    ${amen?`<div class="popup-amenities">🔥 ${amen}</div>`:''}`;
+}
+
+function initMap() {
+  if (leafletMap) return;
+  leafletMap = L.map('map', { zoomControl: false });
+
+  osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap contributors', maxZoom: 19 });
+  satLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Tiles © Esri', maxZoom: 19 });
+  osmLayer.addTo(leafletMap);
+
+  // Zoom + Fit control (top-left, matching leaflet-bar style)
+  const ZoomFit = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd() {
+      const c = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const makeBtn = (html, title, fn) => {
+        const a = L.DomUtil.create('a', '', c);
+        a.innerHTML = html; a.title = title; a.href = '#'; a.role = 'button';
+        L.DomEvent.on(a, 'click', e => { L.DomEvent.stopPropagation(e); L.DomEvent.preventDefault(e); fn(); });
+        return a;
+      };
+      makeBtn('+', 'Zoom in',       () => leafletMap.zoomIn());
+      makeBtn('−', 'Zoom out',      () => leafletMap.zoomOut());
+      makeBtn('⊡', 'Fit all sites', () => mapFitAll());
+      c.querySelector('a:last-child').style.fontSize = '14px';
+      return c;
+    }
+  });
+  new ZoomFit().addTo(leafletMap);
+
+  // Basemap radio control (bottom-left)
+  const BasemapCtrl = L.Control.extend({
+    options: { position: 'bottomleft' },
+    onAdd() {
+      const div = L.DomUtil.create('div', '');
+      div.id = 'basemap-panel';
+      div.innerHTML = `
+        <label><input type="radio" name="bm" value="street" checked> Street</label>
+        <label><input type="radio" name="bm" value="sat"> Satellite</label>`;
+      L.DomEvent.disableClickPropagation(div);
+      div.querySelectorAll('input').forEach(r => r.addEventListener('change', () => {
+        satActive = r.value === 'sat';
+        if (satActive) { osmLayer.remove(); satLayer.addTo(leafletMap); }
+        else           { satLayer.remove(); osmLayer.addTo(leafletMap); }
+      }));
+      return div;
+    }
+  });
+  new BasemapCtrl().addTo(leafletMap);
+}
+
+function mapFitAll() {
+  const pts = rows.filter(r => r.type==='site' && r.lat).map(r => [r.lat, r.lng]);
+  if (pts.length && leafletMap) leafletMap.fitBounds(pts, { padding:[30,30] });
+}
+
+function updateMapMarkers() {
+  if (!leafletMap || !dates.length) return;
+  const visibleIds = new Set(rows.filter(r => r.type==='site').map(r => r.id));
+
+  for (const [id, m] of Object.entries(siteMarkers)) {
+    if (!visibleIds.has(Number(id))) { leafletMap.removeLayer(m); delete siteMarkers[id]; }
+  }
+
+  let hasPts = false;
+  for (const row of rows) {
+    if (row.type !== 'site' || !row.lat) continue;
+    const avail = siteIsAvailable(row.id);
+    const icon  = makeIcon(row.label||'?', avail);
+    if (siteMarkers[row.id]) {
+      siteMarkers[row.id].setIcon(icon);
+    } else {
+      siteMarkers[row.id] = L.marker([row.lat, row.lng], { icon })
+        .addTo(leafletMap)
+        .bindPopup(() => buildPopupHtml(row), { maxWidth: 310 });
+    }
+    hasPts = true;
+  }
+  if (hasPts && !leafletMap._initialFitDone) {
+    mapFitAll();
+    leafletMap._initialFitDone = true;
+  }
+}
+
+function switchToMap() {
+  isMapView = true;
+  document.getElementById('canvas').style.display        = 'none';
+  document.getElementById('controls').style.display      = 'none';
+  document.getElementById('map-container').style.display = 'block';
+  document.getElementById('btn-view-grid').classList.remove('active');
+  document.getElementById('btn-view-map').classList.add('active');
+  initMap();
+  setTimeout(() => {
+    leafletMap.invalidateSize();
+    updateMapMarkers();
+    if (!leafletMap._initialFitDone)
+      leafletMap.setView([MAP_DEFAULT.lat, MAP_DEFAULT.lng], MAP_DEFAULT.zoom);
+  }, 100);
+}
+
+function switchToGrid() {
+  isMapView = false;
+  document.getElementById('canvas').style.display        = 'block';
+  document.getElementById('controls').style.display      = 'flex';
+  document.getElementById('map-container').style.display = 'none';
+  document.getElementById('btn-view-grid').classList.add('active');
+  document.getElementById('btn-view-map').classList.remove('active');
+  scheduleDraw();
+}
+
+document.getElementById('btn-view-grid').addEventListener('click', switchToGrid);
+document.getElementById('btn-view-map').addEventListener('click', switchToMap);
+
+const _origCVR = computeVisibleRows;
+computeVisibleRows = function() { _origCVR(); if (isMapView) updateMapMarkers(); };
+
+loadData();
+</script>
+</body>
+</html>

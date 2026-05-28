@@ -1,0 +1,28 @@
+# Secrets
+config.py
+
+# Runtime state
+nfpl_state.json
+*.log
+
+# Development probes
+probe*.py
+probe*.html
+probe_page.html
+probe_results.json
+probe2_results.json
+map_traffic.json
+map_page.html
+search_results.html
+after_click.html
+calendar.html
+mapview.html
+site_positions.json
+site_map.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude
+.claude/
