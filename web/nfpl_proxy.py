@@ -8,6 +8,7 @@ Run as a service:
 """
 
 import json
+import os
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -420,6 +421,30 @@ SITE_LABELS = {
     15303:'21',15731:'9',16792:'14',17102:'11',17125:'7',17244:'25',17334:'7',
     17343:'9',17344:'14A',17345:'14B',17784:'12',
 }
+
+# Load site positions and labels from JSON file (no restart needed for coordinate updates)
+_site_data_path = os.path.join(os.path.dirname(__file__), "site-data.json")
+try:
+    with open(_site_data_path) as f:
+        _site_data = json.load(f)
+    SITE_POSITIONS = {int(pid): (d['lat'], d['lng']) for pid, d in _site_data.items()}
+    SITE_LABELS = {int(pid): d['label'] for pid, d in _site_data.items()}
+except Exception as e:
+    print(f"Warning: could not load site-data.json: {e}")
+
+
+# Load site positions and labels from JSON file (no restart needed for coordinate updates)
+_site_data_path = os.path.join(os.path.dirname(__file__), "site-data.json")
+try:
+    with open(_site_data_path) as f:
+        _site_data = json.load(f)
+    # Override SITE_POSITIONS and SITE_LABELS from JSON
+    SITE_POSITIONS = {int(pid): (d['lat'], d['lng']) for pid, d in _site_data.items()}
+    SITE_LABELS = {int(pid): d['label'] for pid, d in _site_data.items()}
+except Exception as e:
+    print(f"Warning: could not load site-data.json: {e}")
+    # Fall back to hardcoded values above
+
 
 
 def lake_of(name):
