@@ -19,7 +19,7 @@ echo "==> Deploying scripts..."
 cp web/nfpl_proxy.py "$SCRIPTS/"
 cp check_nfpl.py     "$SCRIPTS/"
 
+echo "==> Restarting proxy..."
+sudo systemctl restart nfpl-proxy
+
 echo "==> Done. $(date)"
-echo ""
-echo "If nfpl_proxy.py changed, restart the proxy:"
-echo "  sudo systemctl restart nfpl-proxy"
