@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  nfpl-proxy:
+    build: .
+    ports:
+      - "127.0.0.1:5004:5004"
+    restart: unless-stopped
+    container_name: nfpl-proxy
